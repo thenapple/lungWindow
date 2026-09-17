@@ -1,0 +1,20 @@
+# DICOM 医学图像处理 —— 依赖清单
+# 要求 Python >= 3.9
+
+pydicom>=2.4.0
+numpy>=1.24.0
+# 服务端无 GUI 环境使用 headless 版 OpenCV（提供相同的 cv2 接口）
+opencv-python-headless>=4.8.0
+
+# 版本说明：streamlit 与 streamlit-drawable-canvas 存在历史兼容性问题，
+# 必须锁定为下面的组合，否则 st_canvas 组件会崩溃：
+#   - streamlit >=1.41 移除了 image_to_url，导致 canvas 0.9.x 运行时报错；
+#   - canvas 0.10+ 迁移到 components.v2，与 streamlit 1.40 及更早版本不兼容。
+streamlit==1.40.0
+streamlit-drawable-canvas==0.9.3
+
+Pillow>=10.0.0
+pandas>=2.0.0
+
+# 开发 / 测试
+pytest>=7.0.0

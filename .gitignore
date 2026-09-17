@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Streamlit
+.streamlit/
+
+# 测试缓存
+.pytest_cache/
+
+# 测试数据（避免把含隐私信息的 DICOM 提交到仓库）
+sample_data/*.dcm
+sample_data/*.dicom
+
+# Claude Code 本地设置（机器相关，不提交）
+.claude/settings.local.json
