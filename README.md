@@ -1,180 +1,129 @@
-# LungWindow — DICOM 肺窗图像处理工具
+# LungWindow — DICOM CT 肺窗图像处理工具
 
-基于 **Python + pydicom + OpenCV + Streamlit** 的医学影像处理 Web 应用，
-支持 DICOM CT 影像的读取、HU 值转换、窗宽窗位调整、图像增强、病灶标注与 PNG 导出。
+基于 Python 的医学影像处理命令行工具，专注于 **DICOM CT 影像的窗宽窗位（Window Width / Window Level）转换**：读取 DICOM 原始 HU 值，按标准肺窗或自定义窗宽窗位参数映射为 8 位灰度图并导出 PNG。
 
-> 本项目适合作为本科「医学影像处理」方向的课程设计 / 简历项目。
+---
 
-## 功能特性
+## 项目简介
 
-- **DICOM 读取**：上传 `.dcm` 文件，解析像素数据与关键元数据
-- **HU 值转换**：按 `RescaleSlope / RescaleIntercept` 还原 CT 值（亨氏单位）
-- **多层面浏览**：支持多帧 DICOM，滑块 / 滚轮切换切片，浏览一整卷 CT
-- **窗宽窗位**：手动调节 + 肺窗 / 纵隔窗 / 骨窗 / 脑窗预设 + 自动套用 DICOM 自带窗宽窗位，支持反色
-- **图像增强**：CLAHE 直方图均衡、伽马校正、锐化
-- **伪彩色**：Jet / Hot / Bone 等多种颜色映射
-- **病灶标注**：鼠标交互绘制矩形 / 圆形，自动统计 ROI 平均 HU、标准差、极值与毫米尺寸
-- **光标 HU 读数**：点选任意像素实时读取该点 HU 值
-- **灰度直方图**：实时显示当前窗宽窗位下的灰度分布
-- **PNG 导出**：一键下载处理结果（含标注叠加）
-- **中英文界面**：一键切换
-- **隐私脱敏**：患者信息默认隐藏，附带命令行脱敏工具
+CT 影像的 HU（Hounsfield Unit）值动态范围可达 `[-1024, 3071]`，远超显示器的 256 级灰度，直接显示会丢失大部分组织对比度。本项目实现标准的窗宽窗位转换算法，将医生关心的 HU 区间线性拉伸到 `[0, 255]`，从而清晰呈现肺纹理、磨玻璃结节等低对比度结构。
+
+项目提供：
+
+- **命令行接口**（`main.py`）：一条命令完成「读取 DICOM → 窗宽窗位转换 → 导出 PNG」，适合批处理与脚本集成
+- **核心算法库**（`core/`）：纯函数化的 HU 转换、窗位映射、图像导出，职责单一、便于复用与测试
+- **完整单元测试**（`tests/`）：覆盖正常路径与异常边界，保证算法健壮性
 
 ## 技术栈
 
 | 库 | 用途 |
 |---|---|
-| pydicom | DICOM 读取与元数据解析 |
-| numpy | 像素 / HU 矩阵运算 |
-| opencv-python-headless | 窗位映射、CLAHE、标注绘制 |
-| streamlit | 本地 Web 界面 |
-| streamlit-drawable-canvas | 交互式标注画布 |
-| Pillow | 图像格式转换与 PNG 编码 |
-
-## 环境要求
-
-- Python 3.9+（已在 Python 3.13 验证通过）
-- Windows / macOS / Linux
-
-## 安装与运行
-
-```bash
-# 1. 创建虚拟环境（推荐）
-python -m venv .venv
-
-# Windows 激活：
-.venv\Scripts\activate
-# macOS / Linux 激活：
-source .venv/bin/activate
-
-# 2. 安装依赖
-pip install -r requirements.txt
-
-# 3. 启动
-streamlit run app.py
-```
-
-浏览器会自动打开 http://localhost:8501 。
-
-### ⚠️ 依赖版本说明（重要）
-
-`requirements.txt` 中 `streamlit` 与 `streamlit-drawable-canvas` 已**锁定**为
-`streamlit==1.40.0` + `streamlit-drawable-canvas==0.9.3`，请勿随意升级。原因：
-
-| 组件 | 兼容性问题 |
-|---|---|
-| `streamlit >= 1.41` | 移除了 `streamlit.elements.image.image_to_url`，导致 canvas 0.9.x 在传入背景图时运行报错 `module has no attribute 'image_to_url'` |
-| `streamlit-drawable-canvas >= 0.10` | 迁移到 Streamlit 的 `components.v2` 组件系统，但包内的 `pyproject.toml` 声明与注册名不一致，导入即报 `must be declared in pyproject.toml with asset_dir` |
-
-也就是说：canvas 0.9.x 只能配 streamlit ≤ 1.40，canvas 0.10+ 依赖的 v2 机制在当前版本又有 bug，
-交叉升级会直接导致应用无法运行。锁定上述组合可稳定运行。
-
-### 国内网络 / 镜像提示
-
-默认 `pip` 可能走国内镜像（如清华源）。若安装时提示 `opencv-python-headless`
-或其它包「找不到版本」（部分镜像对 Python 3.13 的 wheel 同步不全），
-可临时切换到官方源安装：
-
-```bash
-pip install -r requirements.txt -i https://pypi.org/simple
-```
-
-## 使用说明
-
-1. 上传 `.dcm` CT 文件（数据仅本地处理，不会上传到服务器）
-2. 多帧数据会在左侧出现「切片」滑块，切换浏览不同层面
-3. 在左侧选择预设窗位（含自动套用 DICOM 窗宽窗位），或拖动窗宽 / 窗位滑块
-4. 按需开启 CLAHE、伽马校正、锐化或伪彩色
-5. 选择「矩形」或「圆形」工具框选病灶；选择「点」工具单击读取该点 HU 值
-6. 查看 ROI 统计表（平均 HU、标准差、毫米尺寸）
-7. 点击「下载 PNG」导出结果
-
-## 生成演示数据（无需真实 DICOM）
-
-项目不内置真实患者数据，但提供脚本生成一个**合成肺 CT 幻影**（多帧 + 含病灶结节），
-可用于演示多层面浏览、窗宽窗位与病灶标注：
-
-```bash
-python scripts/make_phantom.py
-```
-
-生成的 `sample_data/lung_phantom.dcm` 为 16 帧 × 256×256 的多帧 CT 序列，
-含胸腔软组织、双肺含气区与一个高密度结节，可直接上传到界面测试。
+| Python 3.9+ | 主语言（已在 3.13 验证通过） |
+| pydicom | DICOM 文件读取与元数据解析 |
+| numpy | HU 矩阵运算与窗位映射 |
+| Pillow | PNG 图像编码与导出 |
+| pytest | 单元测试框架 |
 
 ## 核心原理
 
-### HU 值转换
-```
-HU = pixel × RescaleSlope + RescaleIntercept
-```
+### 窗宽窗位的医学意义
 
-### 窗宽窗位映射
+- **窗宽（WW, Window Width）**：显示窗口覆盖的 HU 值范围。窗宽越大，对比度越低，但能同时看清密度差异较大的组织；窗宽越小，对比度越高、细节越锐利。
+- **窗位（WL, Window Level / Center）**：窗口中心的 HU 值，决定哪一段 HU 被映射为中间灰度，效果类似亮度调节。
+
+### 像素映射公式
+
 ```
 low  = WL - WW / 2
 high = WL + WW / 2
 gray = clip((HU - low) / (high - low), 0, 1) × 255
 ```
 
-### 病灶尺寸测量
-利用 DICOM 的 `PixelSpacing (0028,0030)` 将像素尺寸换算为毫米：
-```
-尺寸(mm) = 像素数 × 像素间距(mm/px)
-```
+低于窗下限的像素裁剪为 0（纯黑），高于窗上限的像素裁剪为 255（纯白），越界像素"饱和"到灰度两端，不会溢出。
 
-## 数据脱敏
+### 肺窗示例
 
-出于隐私保护：
-- 界面默认将患者姓名 / ID 显示为「已脱敏」
-- 导出的 PNG 为纯图像，不含任何患者元数据
-- 如需分享原始 DICOM，请先用脱敏工具生成副本：
+标准肺窗 `WW=1500, WL=-600` 覆盖 HU `[-1350, +150]`：含气肺组织（约 `-800 HU`）落在暗灰区，纵隔软组织（约 `+30~+50 HU`）落在亮区，从而在低密度背景下清晰显示肺部病变。
+
+## 功能特性
+
+- **DICOM 解析**：读取 `.dcm` 文件，按 `RescaleSlope / RescaleIntercept` 还原 HU 值
+- **标准肺窗转换**：内置 `WW=1500, WL=-600` 默认参数，一键输出肺窗图像
+- **自定义窗位参数**：`-w / -l` 支持任意窗宽窗位（如纵隔窗 `400 / 40`）
+- **单元测试覆盖**：20 个测试覆盖窗位映射、边界裁剪、多窗位、异常输入等场景
+
+## 效果展示
+
+下图左侧为 **DICOM 原始灰度**直接映射，右侧为 **标准肺窗**（`WW=1500, WL=-600`）处理结果：
+
+![原始灰度 vs 标准肺窗对比](docs/screenshots/lung_window_comparison.png)
+
+可以看到，原始灰度下含气肺组织与背景空气的对比度不足；应用肺窗后，肺纹理与病灶结节的轮廓更加清晰。
+
+## 使用教程
+
+### 环境准备
 
 ```bash
-python scripts/anonymize.py input.dcm output.dcm          # 单个文件
-python scripts/anonymize.py ./raw_data ./anonymized_data  # 批量
+# 建议使用虚拟环境
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+
+pip install -r requirements.txt
 ```
 
-## 目录结构
+> 无真实 DICOM 数据时可先生成合成演示样本：
+> ```bash
+> python scripts/make_phantom.py    # 生成 sample_data/lung_phantom.dcm
+> ```
 
-```
-LungWindow/
-├── app.py                  # Streamlit 主入口
-├── config.py               # 全局常量（预设窗位、默认参数等）
-├── requirements.txt        # 依赖清单
-├── conftest.py             # pytest 路径配置
-├── i18n/                   # 中英文文案
-│   ├── __init__.py
-│   ├── zh.py
-│   └── en.py
-├── core/                   # 核心处理逻辑
-│   ├── dicom_loader.py     # DICOM 读取 + HU 转换 + 元数据
-│   ├── windowing.py        # 窗宽窗位映射
-│   ├── enhancement.py      # CLAHE / 伽马 / 锐化 / 伪彩色
-│   ├── annotation.py       # 标注绘制 + ROI 统计 + 尺寸测量
-│   ├── exporter.py         # PNG 导出
-│   └── anonymizer.py       # DICOM 脱敏
-├── ui/                     # Streamlit UI 组件
-│   └── components.py
-├── utils/                  # 工具函数
-│   └── validators.py       # DICOM 校验
-├── scripts/
-│   ├── anonymize.py        # 命令行脱敏工具
-│   └── make_phantom.py     # 合成肺 CT 幻影数据生成器
-├── tests/                  # 单元测试
-│   └── test_core.py
-├── sample_data/            # 测试数据（需自行脱敏放入）
-└── docs/                   # 文档与截图
-    └── screenshots.md
+### 命令行调用
+
+```bash
+# 1. 默认参数（标准肺窗 WW=1500, WL=-600），输出与输入同目录同名 .png
+python main.py -i sample_data/lung_phantom.dcm
+
+# 2. 自定义窗宽窗位（纵隔窗 WW=400, WL=40）
+python main.py -i sample_data/lung_phantom.dcm -w 400 -l 40
+
+# 3. 指定输出路径
+python main.py -i input.dcm -w 1500 -l -600 -o output/lung.png
 ```
 
-## 运行测试
+参数说明：
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `-i, --input` | DICOM 文件路径（必填） | — |
+| `-w, --ww` | 窗宽 | `1500` |
+| `-l, --wl` | 窗位 | `-600` |
+| `-o, --output` | 输出 PNG 路径 | 输入同目录、同名 `.png` |
+
+处理完成后，控制台会输出窗宽窗位参数、图像尺寸、HU 值范围与输出路径。
+
+> 交互式界面：项目同时保留了基于 Streamlit 的 Web 界面（`streamlit run app.py`），可交互调节窗宽窗位、标注病灶并实时查看，适合探索式分析；命令行接口则适合批处理与脚本集成。
+
+## 测试说明
 
 ```bash
 pytest
 ```
 
-共 14 个单元测试，覆盖 HU 转换、窗宽窗位、反色、增强、伪彩色、PNG 导出、
-矩形 / 圆形 ROI、点读数、多帧读取、窗位标签解析、脱敏与校验器。
+共 **20 个单元测试**，覆盖：
+
+- **窗宽窗位转换**：标准肺窗、纵隔窗的理论值验证（允许 uint8 精度误差）
+- **边界裁剪**：低于窗下限 / 高于窗上限的像素裁剪到 0 / 255
+- **异常输入**：空数组、NaN / ±inf、非法窗宽（ww ≤ 0）
+- **基础功能**：HU 转换、ROI 统计、DICOM 脱敏、PNG 导出、校验器等
+
 测试使用代码内合成的 DICOM 数据集，无需真实影像数据即可运行。
+
+## 项目亮点
+
+- **算法精度**：窗位映射逐点符合理论值（误差 ≤ 1 灰度级），并有单元测试逐点验证
+- **工程化结构**：`core / ui / scripts / tests` 分层清晰，核心算法纯函数化、可独立复用
+- **测试体系**：20 个测试覆盖正常路径与异常边界，保证算法健壮性
+- **医学场景适配**：内置标准肺窗 / 纵隔窗参数，处理流程遵循 DICOM 规范，兼顾隐私脱敏
 
 ## 许可证
 
